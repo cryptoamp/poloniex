@@ -28,7 +28,6 @@ const (
 
 // Client represents a Poloniex client.
 type Client struct {
-	turnpike          *turnpike.Client
 	httpClient        *http.Client
 	apiKey, apiSecret string
 }
@@ -266,7 +265,16 @@ func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
 	symbols := make(chan *Symbol)
 	var once sync.Once
 
-	err := c.turnpike.Subscribe("ticker", nil, turnpike.EventHandler(func(args []interface{}, kwargs map[string]interface{}) {
+	client, err := turnpike.NewWebsocketClient(turnpike.JSON, "wss://api.poloniex.com", nil, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "encountered an error initializing a new turnpike client")
+	}
+	defer client.Close()
+
+	client.ReceiveTimeout = 30 * time.Second
+	_, err = client.JoinRealm("realm1", nil)
+
+	err = client.Subscribe("ticker", nil, turnpike.EventHandler(func(args []interface{}, kwargs map[string]interface{}) {
 		symbol, err := toSymbol(args)
 		if err != nil {
 			fmt.Println("encountered an error converting an event to a Symbol:", err)
@@ -278,7 +286,7 @@ func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
 				close(symbols)
 				symbols = nil
 
-				if err := c.turnpike.Unsubscribe("ticker"); err != nil {
+				if err := client.Unsubscribe("ticker"); err != nil {
 					fmt.Println("encountered error during unsubscription:", err)
 				}
 			})
@@ -744,20 +752,9 @@ func post(c client, command, apiKey, apiSecret string, params url.Values) (json.
 	return json.RawMessage(responseBody), nil
 }
 
-// Close closes a Poloniex client, freeing any resources.
-func (c *Client) Close() error {
-	return c.turnpike.Close()
-}
-
 // New returns a new Poloniex client.
 func New(apiKey, apiSecret string) (*Client, error) {
-	client, err := turnpike.NewWebsocketClient(turnpike.JSON, "wss://api.poloniex.com", nil, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "encountered an error initializing a new turnpike client")
-	}
-
-	client.ReceiveTimeout = 30 * time.Second
-	_, err = client.JoinRealm("realm1", nil)
+	var err error
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -772,7 +769,6 @@ func New(apiKey, apiSecret string) (*Client, error) {
 	}
 
 	return &Client{
-		turnpike:   client,
 		httpClient: httpClient,
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
