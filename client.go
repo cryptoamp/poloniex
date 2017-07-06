@@ -44,7 +44,7 @@ type Symbol struct {
 
 func (s Symbol) String() string {
 	return fmt.Sprintf(`Symbol{BaseCurrency: %s, CounterCurrency: %s, LastRate: %1.8f, LowestAsk: %1.8f,
-		HighestBid: %1.8f, PercentageChange: %5.5f,	BaseVolume: %9.7f, QuoteVolume: %9.7f, Frozen: %t, 
+		HighestBid: %1.8f, PercentageChange: %5.5f,	BaseVolume: %9.8f, QuoteVolume: %9.8f, Frozen: %t, 
 		DailyHigh: %1.8f, DailyLow: %1.8f}`,
 		s.BaseCurrency, s.CounterCurrency, s.LastRate, s.LowestAsk,
 		s.HighestBid, s.PercentageChange, s.BaseVolume, s.QuoteVolume, s.Frozen, s.DailyHigh, s.DailyLow)
