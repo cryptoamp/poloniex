@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,8 +18,8 @@ import (
 
 	"time"
 
-	"github.com/jcelliott/turnpike"
 	"github.com/pkg/errors"
+	turnpike "gopkg.in/jcelliott/turnpike.v2"
 )
 
 const (
@@ -34,18 +35,19 @@ type Client struct {
 
 // Symbol represents a single Poloniex ticker symbol entry.
 type Symbol struct {
-	BaseCurrency, CounterCurrency   string
-	LastRate, LowestAsk, HighestBid float64
-	PercentageChange, BaseVolume    float64
-	DailyHigh                       float64
-	Frozen                          bool
+	BaseCurrency, CounterCurrency         string
+	LastRate, LowestAsk, HighestBid       float64
+	BaseVolume, QuoteVolume               float64
+	PercentageChange, DailyHigh, DailyLow float64
+	Frozen                                bool
 }
 
 func (s Symbol) String() string {
 	return fmt.Sprintf(`Symbol{BaseCurrency: %s, CounterCurrency: %s, LastRate: %1.8f, LowestAsk: %1.8f,
-		HighestBid: %1.8f, PercentageChange: %5.5f,	BaseVolume: %9.7f, Frozen: %t, DailyHigh: %1.8f}`,
+		HighestBid: %1.8f, PercentageChange: %5.5f,	BaseVolume: %9.7f, QuoteVolume: %9.7f, Frozen: %t, 
+		DailyHigh: %1.8f, DailyLow: %1.8f}`,
 		s.BaseCurrency, s.CounterCurrency, s.LastRate, s.LowestAsk,
-		s.HighestBid, s.PercentageChange, s.BaseVolume, s.Frozen, s.DailyHigh)
+		s.HighestBid, s.PercentageChange, s.BaseVolume, s.QuoteVolume, s.Frozen, s.DailyHigh, s.DailyLow)
 }
 
 // Balance represents the complete balance (available, on orders, and BTC value of a given currency)
@@ -182,9 +184,10 @@ const (
 	highestBidIndex
 	percentageChangeIndex
 	baseVolumeIndex
-	_
+	quoteVolumeIndex
 	frozenIndex
 	dailyHighIndex
+	dailyLowIndex
 )
 
 const (
@@ -243,6 +246,13 @@ func toSymbol(tickerEntry []interface{}) (*Symbol, error) {
 		}
 	}
 
+	if qouteVolume, ok := tickerEntry[quoteVolumeIndex].(string); ok {
+		s.QuoteVolume, err = strconv.ParseFloat(qouteVolume, 64)
+		if err != nil {
+			return s, errors.Wrap(err, "encountered an error attempting to parse the quote volume as a floating point number")
+		}
+	}
+
 	if frozen, ok := tickerEntry[frozenIndex].(string); ok {
 		s.Frozen, err = strconv.ParseBool(frozen)
 		if err != nil {
@@ -257,6 +267,13 @@ func toSymbol(tickerEntry []interface{}) (*Symbol, error) {
 		}
 	}
 
+	if dailyLow, ok := tickerEntry[dailyLowIndex].(string); ok {
+		s.DailyLow, err = strconv.ParseFloat(dailyLow, 64)
+		if err != nil {
+			return s, errors.Wrap(err, "encountered an error attempting to parse the daily low as a floating point number")
+		}
+	}
+
 	return s, nil
 }
 
@@ -267,12 +284,14 @@ func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
 
 	client, err := turnpike.NewWebsocketClient(turnpike.JSON, "wss://api.poloniex.com", nil, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "encountered an error initializing a new turnpike client")
+		log.Fatal(err)
 	}
-	defer client.Close()
 
 	client.ReceiveTimeout = 30 * time.Second
 	_, err = client.JoinRealm("realm1", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	err = client.Subscribe("ticker", nil, turnpike.EventHandler(func(args []interface{}, kwargs map[string]interface{}) {
 		symbol, err := toSymbol(args)
@@ -285,7 +304,6 @@ func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
 			once.Do(func() {
 				close(symbols)
 				symbols = nil
-
 				if err := client.Unsubscribe("ticker"); err != nil {
 					fmt.Println("encountered error during unsubscription:", err)
 				}

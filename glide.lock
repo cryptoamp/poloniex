@@ -1,0 +1,19 @@
+hash: 9a5f3255b8c0e9db96a9bdf63d59b02ad70d6187731484247bf3f03bab70b622
+updated: 2017-07-05T20:00:25.290676071-07:00
+imports:
+- name: github.com/gorilla/websocket
+  version: ea4d1f681babbce9545c9c5f3d5194a789c89f5b
+- name: github.com/pkg/errors
+  version: 645ef00459ed84a119197bfb8d8205042c6df63d
+- name: github.com/ugorji/go
+  version: ded73eae5db7e7a0ef6f55aace87a2873c5d2b74
+  subpackages:
+  - codec
+- name: gopkg.in/jcelliott/turnpike.v2
+  version: fd62c756857599590cc1f661bd3e4e2ecf25cfd8
+testImports:
+- name: github.com/jcelliott/turnpike
+  version: fd62c756857599590cc1f661bd3e4e2ecf25cfd8
+  repo: https://github.com/jcelliott/turnpike
+- name: github.com/willmadison/poloniex
+  version: 8e7bf08799608bb989f0b888f9bfdb6a4d637176
