@@ -296,7 +296,7 @@ func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
 	err = client.Subscribe("ticker", nil, turnpike.EventHandler(func(args []interface{}, kwargs map[string]interface{}) {
 		symbol, err := toSymbol(args)
 		if err != nil {
-			fmt.Println("encountered an error converting an event to a Symbol:", err)
+			log.Println("encountered an error converting an event to a Symbol:", err)
 		}
 
 		select {
@@ -305,15 +305,15 @@ func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
 				close(symbols)
 				symbols = nil
 				if err := client.Unsubscribe("ticker"); err != nil {
-					fmt.Println("encountered error during unsubscription:", err)
+					log.Println("encountered error during unsubscription:", err)
 				}
+				log.Println("Ticker disconnected")
 			})
 		case symbols <- symbol:
 		}
 	}))
-
 	if err != nil {
-		fmt.Println("encountered an error subscribing to the 'ticker' topic:", errors.Wrap(err, "error subscribing to 'ticker' topic"))
+		log.Println("encountered an error subscribing to the 'ticker' topic:", errors.Wrap(err, "error subscribing to 'ticker' topic"))
 		return nil, errors.WithStack(err)
 	}
 
