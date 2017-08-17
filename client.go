@@ -42,6 +42,18 @@ type Symbol struct {
 	Frozen                                bool
 }
 
+type Ticker struct {
+	Last          float64 `json:"last,string"`
+	LowestAsk     float64 `json:"lowestAsk,string"`
+	HighestBid    float64 `json:"highestBid,string"`
+	PercentChange float64 `json:"percentChange,string"`
+	BaseVolume    float64 `json:"baseVolume,string"`
+	QuoteVolume   float64 `json:"quoteVolume,string"`
+	IsFrozen      int     `json:"isFrozen,string"`
+	High24Hr      float64 `json:"high24hr,string"`
+	Low24Hr       float64 `json:"low24hr,string"`
+}
+
 func (s Symbol) String() string {
 	return fmt.Sprintf(`Symbol{BaseCurrency: %s, CounterCurrency: %s, LastRate: %1.8f, LowestAsk: %1.8f,
 		HighestBid: %1.8f, PercentageChange: %5.5f,	BaseVolume: %9.8f, QuoteVolume: %9.8f, Frozen: %t, 
@@ -191,14 +203,21 @@ const (
 )
 
 const (
-	host = "poloniex.com"
-	path = "/tradingApi"
+	host        = "poloniex.com"
+	privatePath = "/tradingApi"
+	publicPath  = "/public"
 )
 
-var poloniexURL = &url.URL{
+var poloniexPublicURL = &url.URL{
 	Scheme: "https",
 	Host:   host,
-	Path:   path,
+	Path:   publicPath,
+}
+
+var poloniexPrivateURL = &url.URL{
+	Scheme: "https",
+	Host:   host,
+	Path:   privatePath,
 }
 
 func toSymbol(tickerEntry []interface{}) (*Symbol, error) {
@@ -278,7 +297,7 @@ func toSymbol(tickerEntry []interface{}) (*Symbol, error) {
 }
 
 // Ticker returns a read-only channel of Poloniex ticker symbol entries.
-func (c *Client) Ticker(ctx context.Context) (<-chan *Symbol, error) {
+func (c *Client) TickerWS(ctx context.Context) (<-chan *Symbol, error) {
 	symbols := make(chan *Symbol)
 	var once sync.Once
 
@@ -737,12 +756,35 @@ func (c *Client) CancelOrder(ctx context.Context, orderNumber int64) error {
 	return nil
 }
 
+func (c *Client) Ticker(ctx context.Context) (map[string]Ticker, error) {
+	response, err := get(c.httpClient, "returnTicker", "")
+	if err != nil {
+		return nil, err
+	}
+
+	var apiError apiError
+
+	_ = json.Unmarshal(response, &apiError)
+	if apiError.Error != "" {
+		return nil, errors.New(apiError.Error)
+	}
+
+	var result map[string]Ticker
+
+	err = json.Unmarshal(response, &result)
+	if err != nil {
+		return nil, errors.Wrap(err, "encountered an error attempting to parse the ticker response")
+	}
+
+	return result, nil
+}
+
 func post(c client, command, apiKey, apiSecret string, params url.Values) (json.RawMessage, error) {
 	params.Set("command", command)
 	params.Set("nonce", strconv.FormatInt(time.Now().UnixNano(), 10))
 
 	body := params.Encode()
-	request, err := http.NewRequest(http.MethodPost, poloniexURL.String(), strings.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, poloniexPrivateURL.String(), strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -753,6 +795,30 @@ func post(c client, command, apiKey, apiSecret string, params url.Values) (json.
 
 	request.Header.Set("Key", apiKey)
 	request.Header.Set("Sign", signedBody)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	response, err := c.Do(request)
+	if err != nil {
+		return nil, err
+	}
+
+	defer response.Body.Close()
+
+	responseBody, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.RawMessage(responseBody), nil
+}
+
+func get(c client, resource string, payload string) (json.RawMessage, error) {
+	rawurl := fmt.Sprintf("%s?command=%s", poloniexPublicURL.String(), resource)
+	request, err := http.NewRequest(http.MethodGet, rawurl, strings.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	response, err := c.Do(request)
