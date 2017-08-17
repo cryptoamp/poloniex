@@ -756,7 +756,7 @@ func (c *Client) CancelOrder(ctx context.Context, orderNumber int64) error {
 	return nil
 }
 
-func (c *Client) Ticker(ctx context.Context) (map[string]Ticker, error) {
+func (c *Client) Ticker() (map[string]Ticker, error) {
 	response, err := get(c.httpClient, "returnTicker", "")
 	if err != nil {
 		return nil, err
